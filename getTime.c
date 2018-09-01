@@ -8,78 +8,82 @@
 uint64_t probe;
 
 void map_file(int pages){
-    int *array, *array1,i;
-    unsigned long addr, prev, retVal;
+    int *array, *array1, i, diff=-1;
+    unsigned long request, recieved;
     int fd = open("4kb.file", O_RDWR);
     if(fd == -1){
 	printf("4kb.file opening failed.\n");
 	exit(-1);
     }
-    //getchar();
     array = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    addr = (unsigned long) array;
-    addr += 12288;
-    prev = addr;
-    printf("%p\n", array);
+    request = (unsigned long) array;
+    request += 12288;
     array += 4096;
-    probe = array;
-    printf("%p, %x, %d\n", array, probe, sizeof(probe));
-    return;
+    probe = (uint64_t)array;    // Set the probe variable to address of the starting virtual address for continuous pages
+    // DEBUG: printf("%p, %lx, %d\n", array, probe, (int)sizeof(probe));
     for(i=0; i<=pages; i++){
-	addr += 4096;
-	array1 = mmap((void *)addr, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	request += 4096;
+	array1 = mmap((void *)request, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if( array1 == MAP_FAILED){
 	    printf("Mapping failed\n");
+	    close(fd);
 	    exit(-1);
 	}
-	printf("Requested=%p, Returned=%p, diff=%ld\n", (void *)addr, array1, (prev - (unsigned long)array1));
+	recieved = (unsigned long)array1;
+	diff = recieved - request;
+	// Check for diff value, if diff is not 4096 abort the execution as the virtual address are not contiguous.
+	if(diff != 0){
+	    printf("Contiguous page allocation failed, Requested Addr = %lx, Returned Addr = %lx, Page no = %d. EXITING\n", request, recieved, i+1);
+	    close(fd);
+	    exit(-1);
+	}
+	// DEBUG: printf("Requested=%p, Returned=%p, diff=%d\n", (void *)request, array1, diff);
    	array1[1]=1;
-	prev = (unsigned long)array1;
     }
-    printf("%d\t%d\n", array1[2], array1[1]);
-    array[1]=2;
-    printf("%d\t%d\n", array1[2], array1[1]);
-    //getchar();
     close(fd);
 }
 void print_time(){
-    //int i, *array=(int *)probe;
-    //unsigned long addr = (unsigned long) probe;
-    int i;
+    int i, *array = (int *)probe;
     uint32_t time1,time2;
-    //printf("%d %x\n", array[1], array);
-    /* Training: Bring all the entries to the TLB */
-    /*for(i=0; i<64; i++){
-	array = (int *)addr;
-	array[0]=i;
-    }*/
+    uint64_t temp = probe;
+    /*
+     * Training: Access all the virtual pages before monitoring them.
+     * Bring all the entries to the TLB
+     * how will time1, time2 variable access will affect time monitor?
+     * Instead of calling printf try to store time1 & time2 in an array.
+     */
     for(i=0; i<64; i++){
-    asm volatile (
-	"cpuid\n"
-	"lfence\n"
-	"cpuid\n"
-	"rdtsc\n"
-	"mov %%eax, %%edi\n"
-	"mov $2, %2\n"
-	"lfence\n"
-	"rdtscp\n"
-	"mov %%edi, %0\n"
-	"mov %%eax, %1\n"
-	"cpuid\n"
-	: "=r" (time1), "=r" (time2)
-	: "r" (probe)
-	: "rax", "rbx", "rcx",
-	"rdx", "rdi");
-    printf("time1=%x, time2=%x, diff=%d\n", time1, time2, (time2-time1));
+	array[0]=i;
+	array += 1024;
+    }
+    for(i=0; i<64; i++){
+	/*
+	 * TO-DO:
+	 * change probe value in each iteration to point to next virtual page
+	 */
+	asm volatile (
+	    "lfence\n"
+	    "cpuid\n"
+	    "rdtsc\n"
+	    "mov %%eax, %%edi\n"
+	    "mov $2, %2\n"
+	    "rdtscp\n"
+	    "mov %%edi, %0\n"
+	    "mov %%eax, %1\n"
+	    "cpuid\n"
+	    : "=r" (time1), "=r" (time2)
+	    : "r" (temp)
+	    : "rax", "rbx", "rcx",
+	    "rdx", "rdi");
+	printf("time1=%x, time2=%x, diff=%d, iteration=%d\n", time1, time2, (time2-time1), i);
+	temp += 4096;
     }
    
 }
 
 int main(){
     int x=5;
-    //map_file(64);
-    probe = &x;
+    map_file(64);
     print_time();
-    printf("%d\n", x);
     return 0;
 }
