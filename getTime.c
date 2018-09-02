@@ -60,32 +60,45 @@ void print_time(){
 	array[0]=i;
 	array += 1024;
     }
-    for(j=0; i<100; i++){
-	for(i=0; i<64; i++){
-	    /*
-	     * TO-DO:
-	     * change probe value in each iteration to point to next virtual page
-	     */
-	    asm volatile (
-		"lfence\n"
-		"cpuid\n"
-		"rdtsc\n"
-		"mov %%eax, %%edi\n"
-		"mov (%2), %2\n"
-		"lfence\n"
-		"rdtscp\n"
-		"mov %%edi, %0\n"
-		"mov %%eax, %1\n"
-		"cpuid\n"
-		: "=r" (time1), "=r" (time2)
-		: "r" (temp)
-		: "rax", "rbx", "rcx",
-		"rdx", "rdi");
-	    printf("%d: diff=%d, probe addr = %lx \n", i, (time2-time1), temp);
-	    temp += 4096;
-	}
+    int minTime[100];
+    for(int k=0; k<10; k++){
+    	printf("RUN No. %d\n", k);
+    for(j=0; j<100; j++)
+    	minTime[j] = 999;
+    for(j=0; j<100; j++){
+    	int tempTime =0;
+    	temp = probe;
+    	// printf("%d\n",j );
+		for(i=0; i<64; i++){
+		    /*
+		     * TO-DO:
+		     * change probe value in each iteration to point to next virtual page
+		     */
+		    asm volatile (
+			"lfence\n"
+			"cpuid\n"
+			"rdtsc\n"
+			"mov %%eax, %%edi\n"
+			"mov (%2), %2\n"
+			"lfence\n"
+			"rdtscp\n"
+			"mov %%edi, %0\n"
+			"mov %%eax, %1\n"
+			"cpuid\n"
+			: "=r" (time1), "=r" (time2)
+			: "r" (temp)
+			: "rax", "rbx", "rcx",
+			"rdx", "rdi");
+		    tempTime = time2-time1;
+		    if(tempTime < minTime[j])
+		    	minTime[j] = tempTime;
+		    // printf("%d: diff=%d, probe addr = %lx \n", i, tempTime, temp);
+		    temp += 4096;
+		}
+		printf("%d: minTime =%d\n",j, minTime[j] );
     }
-   
+    printf("\n");
+   }
 }
 
 int main(){
