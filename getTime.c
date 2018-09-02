@@ -80,7 +80,7 @@ void print_time(){
 			"rdtsc\n"
 			"mov %%eax, %%edi\n"
 			"mov (%2), %2\n"
-			"lfence\n"
+			// "lfence\n"
 			"rdtscp\n"
 			"mov %%edi, %0\n"
 			"mov %%eax, %1\n"
