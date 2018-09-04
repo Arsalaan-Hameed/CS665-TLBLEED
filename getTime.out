@@ -1,0 +1,23 @@
+0: variance(cycles): 40,	max_deviation: 22,	min_time = 48,	max_time=70
+1: variance(cycles): 28,	max_deviation: 16,	min_time = 48,	max_time=64
+2: variance(cycles): 31,	max_deviation: 22,	min_time = 48,	max_time=70
+3: variance(cycles): 24,	max_deviation: 16,	min_time = 48,	max_time=64
+4: variance(cycles): 31,	max_deviation: 22,	min_time = 48,	max_time=70
+5: variance(cycles): 24,	max_deviation: 16,	min_time = 48,	max_time=64
+6: variance(cycles): 26,	max_deviation: 16,	min_time = 48,	max_time=64
+7: variance(cycles): 26,	max_deviation: 16,	min_time = 48,	max_time=64
+8: variance(cycles): 21,	max_deviation: 16,	min_time = 48,	max_time=64
+9: variance(cycles): 26,	max_deviation: 16,	min_time = 48,	max_time=64
+
+ Performance counter stats for './getTime':
+
+          1.017959      task-clock (msec)         #    0.763 CPUs utilized          
+                 1      context-switches          #    0.982 K/sec                  
+                 1      cpu-migrations            #    0.982 K/sec                  
+               119      page-faults               #    0.117 M/sec                  
+         21,20,114      cycles                    #    2.083 GHz                    
+         16,09,011      instructions              #    0.76  insn per cycle         
+          3,17,182      branches                  #  311.586 M/sec                  
+            11,337      branch-misses             #    3.57% of all branches        
+
+       0.001334118 seconds time elapsed
