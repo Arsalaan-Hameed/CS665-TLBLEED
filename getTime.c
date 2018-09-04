@@ -1,11 +1,16 @@
+#define _GNU_SOURCE
 #include<stdio.h>
 #include<stdlib.h>
 #include<stdint.h>
 #include<sys/mman.h>
+#include<sched.h>
 #include<fcntl.h>
 #include<unistd.h>
 
 uint64_t probe;
+int NO_OF_PAGES = 65;
+int iteration = 10;
+uint32_t times[10][65];
 
 void map_file(int pages){
     int *array, *array1, i, diff=-1;
@@ -44,66 +49,132 @@ void map_file(int pages){
    	array1[1]=1;
 	request += 4096;
     }
+    //getchar();
     close(fd);
 }
 void print_time(){
     int i, j,  *array = (int *)probe;
-    uint32_t time1,time2;
+    uint32_t start,end;
     uint64_t temp = probe;
-    /*
-     * Training: Access all the virtual pages before monitoring them.
-     * Bring all the entries to the TLB
-     * how will time1, time2 variable access will affect time monitor?
-     * Instead of calling printf try to store time1 & time2 in an array.
-     */
-    for(i=0; i<64; i++){
-	array[0]=i;
-	array += 1024;
+    for(j=0; j<10; j++){
+	/*
+	 * Training: Access all the virtual pages before monitoring them.
+	 * Bring all the entries to the TLB
+	 * how will time1, time2 variable access will affect time monitor?
+	 * Instead of calling printf try to store time1 & time2 in an array.
+	 */
+	for(i=0; i<65; i++){
+	    array[0]=i;
+	    array += 65;
+	}
+	array = (int *)probe;
+	for(i=0; i<65; i++){
+	    asm volatile (
+		"mfence\n"
+		"lfence\n"
+		"cpuid\n"
+		"rdtsc\n"
+		"mov %%eax, %0\n"
+		: "=r" (start)
+		: : "rax");
+	    *array = 0;
+	    asm volatile(
+		"rdtscp\n"
+		"lfence\n"
+		"mov %%eax, %0\n"
+		: "=r" (end)
+		: : "rax", "rbx", "rcx",
+		"rdx", "rdi");
+	    times[j][i] = end - start;
+	    /* DEBUG: printf("%d: diff=%d, probe addr = %lx \n", i, (end-start), temp); */
+	    temp += 4096;
+	    array = (int *)temp;
+	}
+	array = (int *)probe;
+	temp = probe;
+	/* DEBUG: 
+	printf("-------------------------------------------------------------------------\n");
+	printf("-------------------------------------------------------------------------\n");
+	printf("-------------------------------------------------------------------------\n");
+	*/
     }
-    int minTime[100];
-    for(int k=0; k<10; k++){
-    	printf("RUN No. %d\n", k);
-    for(j=0; j<100; j++)
-    	minTime[j] = 999;
-    for(j=0; j<100; j++){
-    	int tempTime =0;
-    	temp = probe;
-    	// printf("%d\n",j );
-		for(i=0; i<64; i++){
-		    /*
-		     * TO-DO:
-		     * change probe value in each iteration to point to next virtual page
-		     */
-		    asm volatile (
-			"lfence\n"
-			"cpuid\n"
-			"rdtsc\n"
-			"mov %%eax, %%edi\n"
-			"mov (%2), %2\n"
-			// "lfence\n"
-			"rdtscp\n"
-			"mov %%edi, %0\n"
-			"mov %%eax, %1\n"
-			"cpuid\n"
-			: "=r" (time1), "=r" (time2)
-			: "r" (temp)
-			: "rax", "rbx", "rcx",
-			"rdx", "rdi");
-		    tempTime = time2-time1;
-		    if(tempTime < minTime[j])
-		    	minTime[j] = tempTime;
-		    // printf("%d: diff=%d, probe addr = %lx \n", i, tempTime, temp);
-		    temp += 4096;
-		}
-		printf("%d: minTime =%d\n",j, minTime[j] );
+   
+}
+
+int var_calc(uint32_t *inputs, int size){
+    int i;
+    uint32_t acc = 0, prev = 0, temp = 0;
+    for(i=0; i<size; i++){
+	if(acc < prev) 
+	    printf("overflow\n");
+	prev = acc;
+	acc += inputs[i];
     }
-    printf("\n");
-   }
+    acc = acc*acc;
+    if(acc < prev)
+	printf("overflow\n");
+    prev = 0;
+    for(i=0; i<size; i++){
+	if(temp < prev)
+	    printf("overflow\n");
+	prev = temp;
+	temp += (inputs[i]*inputs[i]);
+    }
+    temp = temp*size;
+    if(temp < prev)
+	printf("overflow\n");
+    temp = (temp - acc)/(((uint32_t)(size))*((uint32_t) (size)));
+    return temp;
 }
 
 int main(){
-    int x=5;
-    map_file(64);
+    // Set the cpu affinity to 4.
+    int min_values[iteration], variances[iteration], prev_min,  max_dev, min_time, max_time;
+    int  i, j, spurious, max_dev_all, tot_var, var_of_mins, var_of_vars;
+    unsigned long mask = 4;
+    unsigned int len = sizeof(mask);
+    if(sched_setaffinity(0, len, (cpu_set_t *)&mask) < 0)
+	perror("sched_setaffinity");
+
+    // Map 65 virtual contiguous pages to same physical page.
+    map_file(65);
+
+    // Probe first addr of each virtual page and monitor time.
     print_time();
+    spurious = 0;
+    prev_min = 0; 
+    tot_var = 0;
+    max_dev_all  = 0;
+    var_of_mins = 0;
+    var_of_vars = 0;
+    /* DEBUG:
+    for(i=0; i<10; i++){
+	for(j=0; j<65; j++)
+	    printf("%d ", times[i][j]);
+	printf("\n");
+    }
+    */
+    for(i=0; i<iteration; i++){
+	max_dev = 0; 
+	min_time = 0; 
+	max_time = 0;
+
+	for(j = 0; j<NO_OF_PAGES; j++){
+	    if((min_time == 0) || (min_time > times[i][j]))
+		min_time = times[i][j];
+	    if(max_time < times[i][j])
+		max_time = times[i][j];
+	}
+	max_dev = max_time - min_time;
+	min_values[i] = min_time;
+	if(prev_min > min_time)
+	    spurious++;
+	if(max_dev > max_dev_all)
+	    max_dev_all = max_dev;
+	variances[i] = var_calc(times[i], NO_OF_PAGES);
+	tot_var += variances[i];
+	printf("%d: variance(cycles): %d,\tmax_deviation: %d,\tmin_time = %d,\tmax_time=%d\n",i, variances[i], max_dev, min_time, max_time);
+	prev_min = min_time;
+    }
     return 0;
 }
