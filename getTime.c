@@ -9,8 +9,8 @@
 
 uint64_t probe;
 int NO_OF_PAGES = 65;
-int iteration = 10;
-uint32_t times[10][65];
+int iteration = 100;
+uint32_t times[100][65];
 
 void map_file(int pages){
     int *array, *array1, i, diff=-1;
@@ -46,7 +46,7 @@ void map_file(int pages){
 	    exit(-1);
 	}
 	// DEBUG: printf("Requested=%p, Returned=%p, diff=%d\n", (void *)request, array1, diff);
-   	array1[1]=1;
+   	//array1[1]=1;
 	request += 4096;
     }
     //getchar();
@@ -56,47 +56,28 @@ void print_time(){
     int i, j,  *array = (int *)probe;
     uint32_t start,end;
     uint64_t temp = probe;
-    for(j=0; j<10; j++){
-	/*
-	 * Training: Access all the virtual pages before monitoring them.
-	 * Bring all the entries to the TLB
-	 * how will time1, time2 variable access will affect time monitor?
-	 * Instead of calling printf try to store time1 & time2 in an array.
-	 */
-	for(i=0; i<65; i++){
-	    array[0]=i;
-	    array += 65;
-	}
-	array = (int *)probe;
+    for(j=0; j<100; j++){
 	for(i=0; i<65; i++){
 	    asm volatile (
 		"mfence\n"
 		"lfence\n"
 		"cpuid\n"
 		"rdtsc\n"
-		"mov %%eax, %0\n"
-		: "=r" (start)
-		: : "rax");
-	    *array = 0;
-	    asm volatile(
+		"mov %%eax, %%edi\n"
+		"mov (%2), %%rcx\n"
 		"rdtscp\n"
 		"lfence\n"
-		"mov %%eax, %0\n"
-		: "=r" (end)
-		: : "rax", "rbx", "rcx",
+		"mov %%eax, %1\n"
+		"mov %%edi, %0\n"
+		: "=r" (start), "=r" (end)
+		: "r" (temp)
+		: "rax", "rbx", "rcx",
 		"rdx", "rdi");
 	    times[j][i] = end - start;
 	    /* DEBUG: printf("%d: diff=%d, probe addr = %lx \n", i, (end-start), temp); */
 	    temp += 4096;
-	    array = (int *)temp;
 	}
-	array = (int *)probe;
 	temp = probe;
-	/* DEBUG: 
-	printf("-------------------------------------------------------------------------\n");
-	printf("-------------------------------------------------------------------------\n");
-	printf("-------------------------------------------------------------------------\n");
-	*/
     }
    
 }
@@ -127,10 +108,28 @@ int var_calc(uint32_t *inputs, int size){
     return temp;
 }
 
+struct str{
+    int value, freq;
+} unique[65];
+
+int cmpfunc(const void *a, const void *b){
+    struct str *aa, *bb;
+    aa = (struct str *)a;
+    bb = (struct str *)b;
+    if(aa->value > bb->value){
+	return 1;
+    }
+    else{
+	return 0;
+    }
+    return 0;
+}
 int main(){
-    // Set the cpu affinity to 4.
+
     int min_values[iteration], variances[iteration], prev_min,  max_dev, min_time, max_time;
-    int  i, j, spurious, max_dev_all, tot_var, var_of_mins, var_of_vars;
+    int  i, j, k, spurious, max_dev_all, tot_var, var_of_mins, var_of_vars;
+    int diff[NO_OF_PAGES], freq[NO_OF_PAGES], pos, curr, flag;
+    // Set the cpu affinity to 4.
     unsigned long mask = 4;
     unsigned int len = sizeof(mask);
     if(sched_setaffinity(0, len, (cpu_set_t *)&mask) < 0)
@@ -141,6 +140,7 @@ int main(){
 
     // Probe first addr of each virtual page and monitor time.
     print_time();
+    //getchar();
     spurious = 0;
     prev_min = 0; 
     tot_var = 0;
@@ -148,12 +148,13 @@ int main(){
     var_of_mins = 0;
     var_of_vars = 0;
     /* DEBUG:
-    for(i=0; i<10; i++){
+     *
+    */
+    for(i=0; i<100; i++){
 	for(j=0; j<65; j++)
 	    printf("%d ", times[i][j]);
 	printf("\n");
     }
-    */
     for(i=0; i<iteration; i++){
 	max_dev = 0; 
 	min_time = 0; 
@@ -176,5 +177,44 @@ int main(){
 	printf("%d: variance(cycles): %d,\tmax_deviation: %d,\tmin_time = %d,\tmax_time=%d\n",i, variances[i], max_dev, min_time, max_time);
 	prev_min = min_time;
     }
+    /* This loop has some error correct it */
+    for(i=0; i<iteration; i++){
+	pos = 0;
+	unique[0].value = times[i][0];
+	unique[0].freq = 1;
+	for(j=1; j<NO_OF_PAGES; j++){
+	    curr = times[i][j];
+	    for(k=0; k<=pos; k++){
+		if(unique[k].value == curr){
+		    unique[k].freq++;
+		    flag = 1;
+		    break;
+		}
+	    }
+	    if(flag == 1){
+		flag = 0;
+		continue;
+	    }
+	    unique[pos].value = curr;
+	    unique[pos].freq = 1;
+	    pos++;
+	}
+	/* DEBUG:
+	for(j=0; j<NO_OF_PAGES; j++)
+	    printf("%d ", times[i][j]);
+	printf("\ndiff Array \n");
+	for(j=0; j<pos; j++)
+	    printf("%d ", diff[j]);
+	printf("\nfreq Array \n");
+	for(j=0; j<pos; j++)
+	    printf("%d ", freq[j]);
+	*/
+	qsort(unique, pos, sizeof(struct str), cmpfunc);
+	printf("%2d:\t", i+1);
+	for(j=0; j<pos; j++)
+	    printf("%d(%d)\t", unique[j].value, unique[j].freq); 
+	printf("\n");
+    }
     return 0;
 }
+
