@@ -59,14 +59,17 @@ void print_time(){
     for(j=0; j<100; j++){
 	for(i=0; i<65; i++){
 	    asm volatile (
-		"mfence\n"
+		// "mfence\n"
 		"lfence\n"
-		"cpuid\n"
+		// "cpuid\n"
 		"rdtsc\n"
 		"mov %%eax, %%edi\n"
 		"mov (%2), %%rcx\n"
-		"rdtscp\n"
+		"mov (%2), %%rcx\n"
+		"mov (%2), %%rcx\n"
+		"mov (%2), %%rcx\n"
 		"lfence\n"
+		"rdtscp\n"
 		"mov %%eax, %1\n"
 		"mov %%edi, %0\n"
 		: "=r" (start), "=r" (end)
@@ -150,11 +153,11 @@ int main(){
     /* DEBUG:
      *
     */
-    for(i=0; i<100; i++){
-	for(j=0; j<65; j++)
-	    printf("%d ", times[i][j]);
-	printf("\n");
-    }
+    // for(i=0; i<100; i++){
+	// for(j=0; j<65; j++)
+	    // printf("%d ", times[i][j]);
+	// printf("\n");
+    // }
     for(i=0; i<iteration; i++){
 	max_dev = 0; 
 	min_time = 0; 
@@ -174,47 +177,44 @@ int main(){
 	    max_dev_all = max_dev;
 	variances[i] = var_calc(times[i], NO_OF_PAGES);
 	tot_var += variances[i];
-	printf("%d: variance(cycles): %d,\tmax_deviation: %d,\tmin_time = %d,\tmax_time=%d\n",i, variances[i], max_dev, min_time, max_time);
+	// printf("%d: variance(cycles): %d,\tmax_deviation: %d,\tmin_time = %d,\tmax_time=%d\n",i, variances[i], max_dev, min_time, max_time);
 	prev_min = min_time;
     }
-    /* This loop has some error correct it */
-    for(i=0; i<iteration; i++){
-	pos = 0;
-	unique[0].value = times[i][0];
-	unique[0].freq = 1;
-	for(j=1; j<NO_OF_PAGES; j++){
-	    curr = times[i][j];
-	    for(k=0; k<=pos; k++){
-		if(unique[k].value == curr){
-		    unique[k].freq++;
-		    flag = 1;
-		    break;
+
+	for(int i=0;i<iteration; i++){
+		pos=0;
+		unique[0].value = times[i][0];
+		unique[0].freq = 1;
+		for(int j=0;j<NO_OF_PAGES; j++){
+			curr = times[i][j];
+			for(int k=0;k<pos; k++){
+				if(unique[k].value == curr){
+					unique[k].freq++;
+					flag = 1;
+					break;
+				}
+			}
+			if(flag == 0){
+				unique[pos].value = curr;
+				unique[pos].freq = 1;
+				pos++;
+				flag = 1;
+			}
+			flag = 0;
 		}
-	    }
-	    if(flag == 1){
-		flag = 0;
-		continue;
-	    }
-	    unique[pos].value = curr;
-	    unique[pos].freq = 1;
-	    pos++;
-	}
-	/* DEBUG:
-	for(j=0; j<NO_OF_PAGES; j++)
-	    printf("%d ", times[i][j]);
-	printf("\ndiff Array \n");
-	for(j=0; j<pos; j++)
-	    printf("%d ", diff[j]);
-	printf("\nfreq Array \n");
-	for(j=0; j<pos; j++)
-	    printf("%d ", freq[j]);
-	*/
+
 	qsort(unique, pos, sizeof(struct str), cmpfunc);
 	printf("%2d:\t", i+1);
-	for(j=0; j<pos; j++)
-	    printf("%d(%d)\t", unique[j].value, unique[j].freq); 
-	printf("\n");
+		printf("[%d]\t",pos );
+	int tot_freq=0;	
+	for(j=0; j<pos; j++){
+		    printf("%d(%d)\t", unique[j].value, unique[j].freq); 
+			tot_freq +=unique[j].freq;
+		}
+		printf("<<%d>>", tot_freq);
+		printf("\n");
     }
+
     return 0;
 }
 
