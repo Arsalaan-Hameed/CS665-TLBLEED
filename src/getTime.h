@@ -66,10 +66,27 @@ void print_list(struct node *temp){
     return;
 }
 
-void print_array(int *array, int size){
-    for(int i=0; i<size; i++)
-	printf("%d\t", array[i]);
-    printf("\n\n");
+void print_array(int *array, int size, int flag, int outputFlag){
+	if( outputFlag == 0){
+		FILE *pFile;
+		if(flag == 1)
+			pFile = fopen("../output/l1hit.txt", "a");
+		else if(flag == 2)
+			pFile = fopen("../output/l2hit.txt", "a");
+		else if(flag == 3)
+			pFile = fopen("../output/l2miss.txt", "a");
+		else
+			printf("[ERROR] Unknown flag!\n" );
+    	for(int i=0; i<size; i++)
+			fprintf(pFile, "%d\t", array[i]);
+    	fprintf(pFile, "\n");
+    	fclose(pFile);
+    }
+    else{
+    	for(int i=0; i<size; i++)
+			printf( "%d\t", array[i]);
+    	printf("\n");
+    }
 }
 
 /*
