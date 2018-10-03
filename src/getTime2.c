@@ -189,8 +189,14 @@ void *pin_cpu(void *arg){
 
 
 int main(int argc, char *argv[]){
-    // printf("argv: %d\n", atoi(argv[1]));
-    // printf("check\n");
+    int outputFlag;
+    if(argc != 2){
+    	printf("[ERROR] Incorrect number of arguments!\n");
+    	outputFlag = 0;
+    }
+    else
+	    outputFlag = atoi(argv[1]);
+	assert(outputFlag == 1 || outputFlag == 0);
     int core1, core5, set_no, access_time[100];
     struct node *head_set1, *temp, *head_set2, *head_set3;
     uint64_t probe;
@@ -225,7 +231,7 @@ int main(int argc, char *argv[]){
 	PROFILE_TIME_SET1
 	PROFILE_TIME_END
     }
-    print_array(access_time, 100, 1, atoi(argv[1]));//Flag 1 for L1 hit
+    print_array(access_time, 100, 1, outputFlag);//Flag 1 for L1 hit
 
     printf("[OUT] Access Time for second Set:\t");
     probe = (uint64_t)head_set2;
@@ -245,7 +251,7 @@ int main(int argc, char *argv[]){
 	PROFILE_TIME_END
     }
     asm volatile("cpuid" ::: "rax","rbx","rcx");
-    print_array(access_time, 100, 2, atoi(argv[1]));//Flag 2 for L2 hit
+    print_array(access_time, 100, 2, outputFlag);//Flag 2 for L2 hit
 
 
     printf("[OUT] Access Time for Third Set:\t");
@@ -266,7 +272,7 @@ int main(int argc, char *argv[]){
 	PROFILE_TIME_END
     }
     asm volatile("cpuid" ::: "rax","rbx","rcx");
-    print_array(access_time, 100, 3, atoi(argv[1])); //Flag 3 for L2 miss
+    print_array(access_time, 100, 3, outputFlag); //Flag 3 for L2 miss
 
     if(pthread_join(thread1, NULL)){
 	fprintf(stderr, "Error joining thread\n");
