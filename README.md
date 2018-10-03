@@ -1,6 +1,7 @@
 # CS665-TLBLEED
 Course Project - Secure Memory System
 
+File description and their usage is present in src/DESC file.
 
 
 DONE:
