@@ -1,0 +1,16 @@
+
+Files description & their usage.
+
+getTime2.c  -- Full working code that create three eviction set for each event (L1_DTLB_HIT, L1_DTLB_MISS.L2_STLB_HIT, L2_STLB_MISS) and measure time to access these eviction set.
+getTime.c -- Initial Code to get Time for(L1_DTLB_HIT/L2_STLB_HIT)
+monitor.c -- Test code for setting affinity & get affinity.
+prerun.c  -- Code to thrash whole cache heirarchy (L1,L2,L3)
+latency.c -- Code for testing latency time.
+
+USAGE:
+Compilation: 
+1. getTime2: gcc -pthread -o getTime2 getTime.c
+2. others:   Compilation will be as same for any c file.
+
+RUN:
+1. getTime2: ./getTime2
