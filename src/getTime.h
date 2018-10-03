@@ -2,34 +2,75 @@
 #include<sys/mman.h>
 #include<fcntl.h>
 
+/*
+ * Defining no of access for different micro arch, No of access for different set are:
+ * 	HASWELL: 4, 8, 9
+ * 	BROADWELL: 4, 5, 7
+ * 	KABYLAKE: 4, 10, 5
+ */
+#define PROFILE_TIME_START asm volatile( \
+			    "lfence\n" \
+			    "rdtsc\n" \
+			    "mov %%eax, %%edi\n"
 
+#define PROFILE_TIME_SET1  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n"
 
-static inline uint32_t profile_time2(uint64_t probe){
-    uint32_t time;
-    asm volatile(
-	    "lfence\n"
-	    "rdtsc\n"
-	    "mov %%eax, %%edi\n"
-	    "mov (%1), %1\n"
-	    "mov (%1), %1\n"
-	    "mov (%1), %1\n"
-	    "mov (%1), %1\n"
-	    "mov (%1), %1\n"
-	    "lfence\n"
-	    "rdtscp\n"
-	    "sub %%edi, %%eax\n"
-	    "mov %%eax, %0\n"
-	    : "=r" (time)
-	    : "r" (probe)
-	    : "rax", "rbx", "rcx", "rdx", "rdi");
-    return time;
+#define PROFILE_TIME_HASWELL_SET2  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" 
+#define PROFILE_TIME_HASWELL_SET3  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+
+#define PROFILE_TIME_KABYLAKE_SET2  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" 
+#define PROFILE_TIME_KABYLAKE_SET3  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" 
+
+#define PROFILE_TIME_BROADWELL_SET2  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" 
+
+#define PROFILE_TIME_BROADWELL_SET3  "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" "mov (%1), %1\n" "mov (%1), %1\n" \
+				   "mov (%1), %1\n" 
+
+#define PROFILE_TIME_END \
+		"lfence\n" \
+		"rdtscp\n" \
+		"sub %%edi, %%eax\n" \
+		"mov %%eax, %0\n" \
+		: "=r" (access_time[i]) \
+		: "r" (probe)   \
+		: "rax", "rbx", "rcx", "rdx", "rdi"); 
+
+struct node{
+    struct node *addr;
+    uint64_t arr[7];
+};
+
+void print_list(struct node *temp){
+    uint64_t mask = 0xffffffffffffffc0, var;
+    while(temp != NULL){
+	var  = (uint64_t)temp;
+	var = var >> 6;
+	printf(" %p[%lu]", temp, var%63);
+	temp = temp->addr;
+	if(temp != NULL)
+	    printf("-->");
+    }
+    printf("\n");
+    return;
 }
 
-
-
-/*
- * Function from where the newly created thread will start executing
- */
+void print_array(int *array, int size){
+    for(int i=0; i<size; i++)
+	printf("%d\t", array[i]);
+    printf("\n\n");
+}
 
 /*
  * Allocate continuous virtual pages mapping to same file 
