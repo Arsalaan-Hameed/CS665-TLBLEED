@@ -20,7 +20,8 @@
 #define PAGES 4096
 #define PAGE 4096
 #define VTARGET 0x300000000000ULL
-#define HASWELL 1
+// #define HASWELL 1
+#define KABYLAKE 1
 
 uint64_t array[50000];
 
@@ -103,9 +104,10 @@ struct node *create_evict_set2(int pages, int set_no){
 	l2_set_no = upper_bits ^ lower_bits;
 #endif
 #ifdef KABYLAKE
-	mask =  (VTARGET+pages*PAGE) >> 12;
+	page_no = rand()%21626930;
+	mask =  (VTARGET+page_no*PAGE) >> 12;
 	lower_bits = mask & 0x7F;
-	upper_bits = mask & 0x3F40;
+	upper_bits = mask & 0x3F80;
 	upper_bits = upper_bits >> 7;
 	l2_set_no = upper_bits ^ lower_bits;
 #endif
@@ -202,8 +204,8 @@ int main(){
     }
     pin_cpu(&core5);
     head_set1 = create_evict_set1(L1_DTLB_ASSOC, set_no);
-    head_set2 = create_evict_set2(6, set_no);
-    head_set3 = create_evict_set2(9, set_no);
+    head_set2 = create_evict_set2(10, set_no);
+    head_set3 = create_evict_set2(13, set_no);
 
     printf("[OUT] Set1: ");
     print_list(head_set1);
