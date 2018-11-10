@@ -47,10 +47,39 @@
 		: "r" (probe)   \
 		: "rax", "rbx", "rcx", "rdx", "rdi"); 
 
+#define PROFILE_TIME_END1 \
+		"lfence\n" \
+		"rdtscp\n" \
+		"sub %%edi, %%eax\n" \
+		"mov %%eax, %0\n" \
+		: "=r" (access_time1[z]) \
+		: "r" (probe)   \
+		: "rax", "rbx", "rcx", "rdx", "rdi"); 
+
 struct node{
     struct node *addr;
     uint64_t arr[7];
 };
+
+static inline uint32_t profile_time_template(uint64_t probe){
+    uint32_t time;
+    asm volatile(
+	    "lfence\n"
+	    "rdtsc\n"
+	    "mov %%eax, %%edi\n"
+	    "mov (%1), %1\n"
+	    "mov (%1), %1\n"
+	    "mov (%1), %1\n"
+	    "mov (%1), %1\n"
+	    "lfence\n"
+	    "rdtscp\n"
+	    "sub %%edi, %%eax\n"
+	    "mov %%eax, %0\n"
+	    : "=r" (time)
+	    : "r" (probe)
+	    : "rax", "rbx", "rcx", "rdx", "rdi");
+    return time;
+}
 
 void print_list(struct node *temp){
     uint64_t mask = 0xffffffffffffffc0, var;
