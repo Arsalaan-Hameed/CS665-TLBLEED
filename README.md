@@ -5,11 +5,6 @@ File description and their usage is present in src/DESC file.
 
 
 DONE:
-1. TLB Reverse Engineering (Finding the associativity, sets & sharing between hyperthread for l1dtlb, l1itlb, l2stlb).
-2. Timing the L1TLB_HIT, L1_TLB_MISS.L2_STLB_HIT, L2_STLB_MISS.
-
-TO-DO:
-1. Clean and Update Reverse Engineering  code on repo.
-2. Create frequency distribution graph of L1_TLB_HIT/L2_TLB_HIT/L2_TLB_MISS.
-3. Create google(shareable) document & write experiment and their result conducted so far.
-3. Create attack code.
+1. TLB Reverse Engineering (Finding the associativity, sets & sharing between hyperthread for l1dtlb, l1itlb, l2stlb). dtlb.c, itlb.c
+2. Timing the L1TLB_HIT, L1_TLB_MISS.L2_STLB_HIT, L2_STLB_MISS. (dtlb_latency.c, stlb_latency.c)
+3. Attack code (spy.c, victim.c)
