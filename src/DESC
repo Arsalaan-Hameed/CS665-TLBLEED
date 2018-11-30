@@ -1,0 +1,15 @@
+Reverse Engineering
+
+dtlb.c: Code to create eviction from tlb see comment in head on how to use it
+itlb.c: code to create eviction in itlb, see comments in source on how to run it
+
+Latency measuring
+
+dtlb_latency.c: code that measure latency of hit and miss in dtlb
+stlb_latency.c: code that measure latency of hit and miss stlb
+
+
+Attack code
+victim.c: victim code 
+spy.c: spy code 
+change SYNC_FILE macro in latency.h before running victim. run victim first then spy.
